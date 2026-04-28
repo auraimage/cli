@@ -1,0 +1,43 @@
+{
+  "name": "@auraimage/cli",
+  "version": "1.0.0",
+  "description": "Command-line tool for AuraImage — bootstrap a project, log in, and bulk-upload images from your terminal",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "aura": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "prepublishOnly": "pnpm build",
+    "build": "tsc",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint --fix \"src/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "commander": "^13.1.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "@types/node": "^22.14.0",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "prettier": "^3.8.2",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.1",
+    "vitest": "^4.0.18"
+  }
+}
