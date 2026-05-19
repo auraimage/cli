@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Run from the package directory (`packages/cli`) with pnpm:
+Run from the package directory with pnpm:
 
 ```sh
 pnpm build          # tsc → dist/
@@ -67,14 +67,19 @@ No env vars are required for end users — production URLs are baked in as defau
 
 ## Publishing
 
-Manual publish — no CI pipeline or changeset workflow yet:
+Releases are driven by [Changesets](https://github.com/changesets/changesets) and published to npm via OIDC trusted publishing from `.github/workflows/release.yml`. The flow mirrors `@auraimage/sdk` (see that repo's ADR for context).
+
+To ship a change:
 
 ```sh
-pnpm build
-pnpm publish --access public
+pnpm exec changeset      # pick bump type + write summary; commits a file under .changeset/
+git push                 # PR lands on main → changesets bot opens a "Version Packages" PR
+# Merge the Version Packages PR → release.yml publishes to npm and tags the release
 ```
 
-Run from the `packages/cli` directory.
+`prepublishOnly` runs `pnpm build && pnpm test` as a safety net, so even a manual `pnpm publish` is gated by tests passing.
+
+No `pnpm-lock.yaml` lives in this repo — CI installs with plain `pnpm install`. npm trusted-publisher must be configured on npmjs.com for repo `auraimage/cli`, workflow `release.yml`.
 
 ## No Tests Yet
 
