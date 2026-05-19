@@ -3,8 +3,6 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const env = parseCliEnv(process.env);
-export const AUTH_API_URL = env.AURA_API_URL;
-export const IMAGE_WORKER_URL = env.AURA_CDN_URL;
 export const WEB_URL = env.AURA_WEB_URL;
 
 interface AuraConfig {
