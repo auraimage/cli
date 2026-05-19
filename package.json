@@ -2,11 +2,30 @@
   "name": "@auraimage/cli",
   "version": "1.0.0",
   "description": "Command-line tool for AuraImage — bootstrap a project, log in, and bulk-upload images from your terminal",
+  "keywords": [
+    "auraimage",
+    "cli",
+    "image-upload",
+    "bulk-upload",
+    "cloudflare",
+    "r2"
+  ],
+  "homepage": "https://auraimage.ai",
+  "bugs": {
+    "url": "https://github.com/auraimage/cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/auraimage/cli.git"
+  },
   "license": "MIT",
+  "author": "Auraimage <hello@auraimage.ai>",
   "private": false,
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "bin": {
     "aura": "dist/index.js"
