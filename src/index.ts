@@ -43,9 +43,9 @@ const program = new Command().name('aura').description('AuraImage CLI').version(
 
 program
   .command('init')
-  .description('Initialize AuraImage in this project')
-  .option('--rotate', 'Rotate keys only — preserves projectName')
-  .action((options: { rotate?: boolean }) => cmdInit(options));
+  .description('Pick or create an AuraImage project and print the env vars to add')
+  .option('--name <name>', 'Name for the new Secret Key (defaults to cli-<hostname>)')
+  .action((options: { name?: string }) => cmdInit({ name: options.name }));
 
 program
   .command('login')
@@ -61,8 +61,10 @@ program.command('logout').description('Sign out and revoke this CLI session').ac
 
 program
   .command('upload <path>')
-  .description('Upload images from a directory or a single file to AuraImage')
-  .requiredOption('--project-name <projectName>', 'Your project name')
+  .description(
+    'Upload an image or every image under a directory (recurses, skipping dot-dirs and node_modules/dist/build)'
+  )
+  .option('--project-name <projectName>', 'Project to upload into (prompts if omitted)')
   .option('--json', 'Emit newline-delimited JSON to stdout (one object per file)')
   .action(cmdUpload);
 

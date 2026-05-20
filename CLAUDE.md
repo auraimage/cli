@@ -56,10 +56,12 @@ No env vars are required for end users — production URLs are baked in as defau
 
 ## Key Behaviors
 
-- **Credentials**: stored at `~/.aura/credentials` as JSON `{ token, email }` (mode `0o600`). `aura upload` hard-exits if this file is missing — users must run `aura login` first.
-- **Upload is sequential by design**: the `upload` command processes files one at a time to avoid rate limits. Do not parallelize it.
-- **Upload scans top-level only**: `readdirSync` without recursion — subdirectories are not traversed.
-- **`aura init`** writes `aura.config.json` and `.env.local` in the user's CWD. The outro message also instructs users to set Cloudflare Worker secrets (`MACHINE_SECRET`, `JWT_SECRET`) via `wrangler secret put` — the CLI does not manage these.
+- **Credentials**: stored at `~/.aura/credentials` as JSON `{ token, email, local? }` (mode `0o600`). Commands that hit the authed API hard-exit if this file is missing. `aura init` auto-triggers `aura login` inline when credentials aren't present.
+- **`aura init`**: picks/creates a project via the API, creates a **new** Secret Key named `cli-<hostname>` (overridable via `--name <name>`) by POSTing to `/v1/me/secret-keys`, and prints a copy-pastable env block (`AURA_SECRET_KEY`, `NEXT_PUBLIC_AURA_PROJECT_NAME`). Each run mints a new key — clean up unused ones in the dashboard. No `aura.config.json`, no `.env.local` mutation, no wrangler guidance.
+- **Project name validation** mirrors the dashboard (`apps/dashboard/src/app/dashboard/new/page.tsx`): `^[a-z0-9-]+$`, 2–40 chars, plus a reserved set (`api`, `admin`, `test`, `static`, `registry`, `cdn`, `health`, `v1`). The placeholder is the slugified `basename(process.cwd())`, falling back to `my-app` if that slug fails validation.
+- **Upload is sequential by design**: `upload` processes files one at a time to avoid rate limits. Do not parallelize it.
+- **Upload recurses subdirectories**: skips dot-dirs (`.git`, `.next`, …) and `node_modules` / `dist` / `build`. Honors the image-extension allow-list in `src/commands/upload.ts`.
+- **`--project-name` is optional on `upload`**: omitted → interactive `p.select` picker from `GET /v1/projects`. With `--json`, the flag is required (no TTY for the picker).
 
 ## Git Conventions
 
