@@ -43,9 +43,10 @@ const program = new Command().name('aura').description('AuraImage CLI').version(
 
 program
   .command('init')
-  .description('Pick or create an AuraImage project and print the env vars to add')
+  .description('Pick a project and print the env vars to add')
+  .option('--project <name>', 'Project to wire up (prompts if omitted)')
   .option('--name <name>', 'Name for the new Secret Key (defaults to cli-<hostname>)')
-  .action((options: { name?: string }) => cmdInit({ name: options.name }));
+  .action((options: { name?: string; project?: string }) => cmdInit({ name: options.name, project: options.project }));
 
 program
   .command('login')

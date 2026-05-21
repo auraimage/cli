@@ -8,7 +8,7 @@ import os from 'node:os';
 
 const CREATE_NEW = '__create_new__';
 
-export async function cmdInit(options: { name?: string } = {}) {
+export async function cmdInit(options: { name?: string; project?: string } = {}) {
   p.intro('Welcome to AuraImage');
 
   if (!readCredentials()) {
@@ -41,9 +41,15 @@ export async function cmdInit(options: { name?: string } = {}) {
   }
 
   let projectName: string;
-  if (projects.length === 0) {
-    p.log.info("You don't have any projects yet — let's spin up your first one.");
-    projectName = await promptCreateProject(apiUrl, creds.token);
+  if (options.project) {
+    if (!projects.some((pr) => pr.projectName === options.project)) {
+      p.cancel(`Project '${options.project}' not found.`);
+      process.exit(1);
+    }
+    projectName = options.project;
+  } else if (projects.length === 0) {
+    p.cancel('No projects found — create one first in the dashboard.');
+    process.exit(1);
   } else {
     const choice = await p.select({
       message: 'Which project are we wiring up today?',
@@ -62,7 +68,7 @@ export async function cmdInit(options: { name?: string } = {}) {
   const keyName = options.name ?? `cli-${os.hostname()}`;
   const keying = p.spinner();
   keying.start('Creating a fresh Secret Key…');
-  const res = await fetch(`${apiUrl}/v1/me/secret-keys`, {
+  const res = await fetch(`${apiUrl}/v1/projects/${encodeURIComponent(projectName)}/secret-keys`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${creds.token}`,
@@ -85,7 +91,7 @@ export async function cmdInit(options: { name?: string } = {}) {
   const { secret } = (await res.json()) as { secret: string };
   keying.stop('Created.');
 
-  const envBlock = [`AURA_SECRET_KEY=${secret}`, `NEXT_PUBLIC_AURA_PROJECT_NAME=${projectName}`].join('\n');
+  const envBlock = [`AURA_PROJECT=${projectName}`, `AURA_SECRET_KEY=${secret}`].join('\n');
 
   p.note(envBlock, 'Drop these into your env file (.env.local, .env, or wherever you keep secrets)');
   p.log.info('Keep `AURA_SECRET_KEY` server-side only — it signs upload tokens for your project.');
