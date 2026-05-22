@@ -81,7 +81,7 @@ async function existingSessionEmail(apiUrl: string, token: string, fallback: str
 }
 
 export async function cmdLogin(options: LoginOptions = {}) {
-  p.intro(options.local ? 'AuraImage — sign in (local)' : 'AuraImage — sign in');
+  p.intro(options.local ? 'Welcome to AuraImage — signing in (local)' : 'Welcome to AuraImage — signing in');
 
   const endpoints = options.local ? localEndpoints() : envEndpoints();
 
@@ -93,11 +93,11 @@ export async function cmdLogin(options: LoginOptions = {}) {
       const email = await existingSessionEmail(existingEndpoints.apiUrl, existing.token, existing.email);
       if (email) {
         const proceed = await p.confirm({
-          message: `You're already signed in as ${email}. Replace this CLI session?`,
+          message: `You're already signed in as ${email} — replace this CLI session?`,
           initialValue: false
         });
         if (p.isCancel(proceed) || !proceed) {
-          p.cancel('Cancelled.');
+          p.cancel('No worries — staying signed in.');
           process.exit(0);
         }
       }
@@ -109,7 +109,7 @@ export async function cmdLogin(options: LoginOptions = {}) {
   try {
     device = await startDeviceFlow(endpoints.apiUrl, name);
   } catch (e) {
-    p.log.error(e instanceof Error ? e.message : 'Could not start sign-in.');
+    p.log.error(e instanceof Error ? e.message : "Couldn't start sign-in — give it another go in a moment.");
     process.exit(1);
   }
 
@@ -120,9 +120,9 @@ export async function cmdLogin(options: LoginOptions = {}) {
   }
   p.log.message(
     [
-      `If the browser doesn't open, visit:`,
+      `If your browser didn't pop open, head to:`,
       `  ${device.verification_uri}`,
-      `And enter this code:`,
+      `and punch in this code:`,
       `  ${device.user_code}`
     ].join('\n')
   );
@@ -133,13 +133,13 @@ export async function cmdLogin(options: LoginOptions = {}) {
   // Best-effort cancel on Ctrl-C. Don't block exit on the network call.
   const onSigint = () => {
     void cancelDeviceCode(endpoints.apiUrl, device.device_code);
-    p.cancel('Cancelled.');
+    p.cancel('Bailing out — sign-in cancelled.');
     process.exit(130);
   };
   process.once('SIGINT', onSigint);
 
   const spinner = p.spinner();
-  spinner.start('Waiting for approval in your browser…');
+  spinner.start('Waiting for you to approve this in the browser…');
 
   try {
     while (Date.now() < expiresAt) {
@@ -158,12 +158,8 @@ export async function cmdLogin(options: LoginOptions = {}) {
           email: result.email,
           ...(options.local ? { local: true } : {})
         });
-        spinner.stop(`Signed in as ${result.email}`);
-        p.outro(
-          options.local
-            ? 'Credentials saved to ~/.aura/credentials (local mode)'
-            : 'Credentials saved to ~/.aura/credentials'
-        );
+        spinner.stop(`Signed in as ${result.email}.`);
+        p.outro(options.local ? "You're in (local mode). Try `aura init` next." : "You're in. Try `aura init` next.");
         return;
       }
 
@@ -173,19 +169,19 @@ export async function cmdLogin(options: LoginOptions = {}) {
         continue;
       }
       if (result.error === 'access_denied') {
-        spinner.stop('Cancelled');
-        p.outro('Sign-in was cancelled in the browser. Run aura login again to retry.');
+        spinner.stop('Cancelled in the browser.');
+        p.outro('No problem — give `aura login` another shot whenever.');
         process.exit(1);
       }
       if (result.error === 'expired_token') {
-        spinner.stop('Expired');
-        p.outro('Sign-in code expired. Run aura login again.');
+        spinner.stop('That code expired.');
+        p.outro('These codes have a short fuse — run `aura login` again to grab a fresh one.');
         process.exit(1);
       }
     }
 
-    spinner.stop('Expired');
-    p.outro('Sign-in timed out. Run aura login again.');
+    spinner.stop('Timed out waiting.');
+    p.outro("Didn't see an approval come through — run `aura login` again when you're ready.");
     process.exit(1);
   } finally {
     process.removeListener('SIGINT', onSigint);

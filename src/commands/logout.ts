@@ -5,7 +5,7 @@ import * as p from '@clack/prompts';
 export async function cmdLogout() {
   const creds = readCredentials();
   if (!creds) {
-    p.outro('Not signed in.');
+    p.outro("You weren't signed in — nothing to do.");
     return;
   }
 
@@ -16,15 +16,13 @@ export async function cmdLogout() {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${creds.token}` }
     });
-    // 204 = revoked. 401 = already revoked or unknown token; either way the local
-    // credentials are stale, so we still wipe them.
     if (!res.ok && res.status !== 401) {
-      p.log.warn(`Server-side revoke failed (${res.status}). Removing local credentials anyway.`);
+      p.log.warn(`Server-side revoke didn't take (${res.status}) — wiping local credentials anyway.`);
     }
   } catch {
-    p.log.warn('Could not reach the API. Removing local credentials anyway.');
+    p.log.warn("Couldn't reach the API — wiping local credentials anyway.");
   }
 
   clearCredentials();
-  p.outro('Signed out.');
+  p.outro('Signed out. See you next time.');
 }
