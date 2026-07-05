@@ -15,7 +15,7 @@ interface UploadOptions {
 
 interface UploadResponseBody {
   url: string;
-  key: string;
+  name: string;
   blurhash: string;
   width: number;
   height: number;
