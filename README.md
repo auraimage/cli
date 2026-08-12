@@ -1,5 +1,7 @@
 # @auraimage/cli
 
+[![Images powered by AuraImage](https://img.shields.io/badge/Images%20powered%20by-AuraImage-0b0b0b?style=flat-square)](https://auraimage.ai)
+
 Command-line tool for [AuraImage](https://auraimage.ai). Sign in, pick a project, and ship images from your terminal.
 
 ## Install
@@ -96,3 +98,10 @@ Full docs: [auraimage.ai/docs](https://auraimage.ai/docs).
 ## License
 
 MIT © AuraImage
+
+---
+
+Images powered by [AuraImage](https://auraimage.ai) — the image CDN that
+installs itself. Set it up in any project with `npx aura init`, or from your
+AI agent with [Agent Skills](https://github.com/auraimage/skills) and the
+[MCP server](https://github.com/auraimage/mcp-server).
