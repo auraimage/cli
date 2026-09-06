@@ -2,8 +2,12 @@
 import { cmdInit } from './commands/init.js';
 import { cmdLogin } from './commands/login.js';
 import { cmdLogout } from './commands/logout.js';
+import { cmdOgList } from './commands/og-list.js';
+import { cmdOgPush } from './commands/og-push.js';
+import { cmdOgRm } from './commands/og-rm.js';
 import { cmdUpload } from './commands/upload.js';
 import { readCredentials } from './lib/credentials.js';
+import { collect } from './lib/og-flags.js';
 import { Command } from 'commander';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -68,5 +72,31 @@ program
   .option('--project-name <projectName>', 'Project to upload into (prompts if omitted)')
   .option('--json', 'Emit newline-delimited JSON to stdout (one object per file)')
   .action(cmdUpload);
+
+const og = program.command('og').description('Manage this project’s OG templates (social preview images)');
+
+og.command('push <name> <file>')
+  .description('Push an OG template from an HTML file (idempotent)')
+  .option('--width <px>', 'Canvas width in pixels', '1200')
+  .option('--height <px>', 'Canvas height in pixels', '630')
+  .option('--font <family>', 'Google Font family to load (repeatable, max 4)', collect, [])
+  .option('--default <key=value>', 'Default value for a variable (repeatable)', collect, [])
+  .option('--quality <n>', 'Output quality 1-100 for JPEG and WebP (default 80)')
+  .option('--project <name>', 'Project to push into (defaults to AURA_PROJECT)')
+  .option('--json', 'Print the template summary as JSON')
+  .action(cmdOgPush);
+
+og.command('list')
+  .description('List the OG templates in this project')
+  .option('--project <name>', 'Project to list (defaults to AURA_PROJECT)')
+  .option('--json', 'Print the templates as JSON')
+  .action(cmdOgList);
+
+og.command('rm <name>')
+  .description('Remove an OG template')
+  .option('--project <name>', 'Project to remove from (defaults to AURA_PROJECT)')
+  .option('--yes', 'Skip the confirmation prompt')
+  .option('--json', 'Print the result as JSON')
+  .action(cmdOgRm);
 
 program.parse();

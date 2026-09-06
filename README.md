@@ -81,6 +81,60 @@ Revokes this CLI session server-side and clears `~/.aura/credentials`.
 aura logout
 ```
 
+## `aura og` — OG templates
+
+An **OG template** is a design your project stores once and renders on demand into a social preview image. You author it as an HTML file in your repo, push it, and point `og:image` at the Render URL. See the [OG images guide](https://auraimage.ai/docs/og-images) for the authoring rules.
+
+These commands authenticate with the project's **Secret Key**, not the CLI session. Set `AURA_SECRET_KEY` and `AURA_PROJECT` in `.env.local` — `aura init` prints both. Resolution order is the real environment, then `.env.local`, then `.env` in the current directory.
+
+```sh
+aura og push blog-post ./og/blog-post.html --font Inter
+aura og preview ./og/blog-post.html --var title="Hello world" --out preview.png
+aura og list
+aura og rm blog-post
+```
+
+Canvas and font metadata are **flags, not markup** — the file stays a design, and the push carries its properties. Keep the flags in an npm script so the repo remembers them:
+
+```json
+{
+  "scripts": {
+    "og:push": "aura og push blog ./og/blog.html --font Inter"
+  }
+}
+```
+
+### `og push <name> <file>`
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--width <px>` | `1200` | Canvas width, 100–4096. |
+| `--height <px>` | `630` | Canvas height, 100–4096. |
+| `--font <family>` | none | Google Font family by name. Repeatable, max 4. Omit it to use the built-in font. |
+| `--default <key=value>` | none | Default for a variable, so the Render URL may omit it. Repeatable. Splits on the first `=`, so a slot path like `cover=w=1200/blog/hero` works. |
+| `--quality <n>` | `80` | 1–100, applied to JPEG and WebP only. |
+| `--project <name>` | `AURA_PROJECT` | Override the project. |
+| `--json` | off | Print the template summary plus `exampleUrl` as JSON. |
+
+Push is idempotent: the same file and flags produce the same version and a `200`, and a change produces a new version that refreshes every Render URL within about a minute. On success it prints the Render URL and one example URL with every text variable filled.
+
+### `og preview <file>`
+
+Renders the file locally with the same engine the platform uses, so you can iterate without pushing. Image slots and static images resolve to your project's public CDN URLs and are fetched from the CDN; nothing else is fetched.
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--var <key=value>` | none | Value for a variable. Repeatable. |
+| `--out <path>` | `og-preview.<ext>` | Where to write the image. |
+| `--format <fmt>` | `png` | `png`, `jpg`, or `webp`. |
+| `--width`, `--height`, `--font`, `--default`, `--quality`, `--project` | same as `push` | The canvas the preview renders at. |
+
+A variable with no `--var` and no `--default` is an error naming the variable, the same contract the Render URL has.
+
+### `og list` and `og rm <name>`
+
+`og list` prints every template with its canvas, version, variables, and Render URL; `--json` prints the raw array. `og rm <name>` confirms before removing; pass `--yes` to skip the prompt (required with `--json`).
+
 ## Environment variables
 
 For end users, no env vars are needed — production URLs are baked in. For contributors running against a local stack:
