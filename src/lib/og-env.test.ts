@@ -19,8 +19,18 @@ beforeEach(() => {
   snapshot = { ...process.env };
   // A developer running this suite may have these set for real work, and
   // loadProjectEnv never overrides what is already there — which would silently
-  // invert the precedence assertions below.
-  for (const key of ['AURA_SECRET_KEY', 'AURA_PROJECT', 'AURA_PROJECT_NAME', 'AURA_CDN_URL']) {
+  // invert the precedence assertions below. AURA_API_URL and AURA_WEB_URL are
+  // cleared too: resolveOgContext goes through parseCliEnv, which validates all
+  // three URLs, so a malformed value in either one would fail assertions that
+  // have nothing to do with it.
+  for (const key of [
+    'AURA_SECRET_KEY',
+    'AURA_PROJECT',
+    'AURA_PROJECT_NAME',
+    'AURA_CDN_URL',
+    'AURA_API_URL',
+    'AURA_WEB_URL'
+  ]) {
     delete process.env[key];
   }
   // No credentials file is the common case for `aura og *`: endpoint resolution
