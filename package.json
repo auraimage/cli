@@ -35,7 +35,7 @@
   },
   "scripts": {
     "prepublishOnly": "pnpm build && pnpm test",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "type-check": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint --fix \"src/**/*.ts\"",

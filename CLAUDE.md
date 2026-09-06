@@ -83,6 +83,8 @@ git push                 # PR lands on main → changesets bot opens a "Version 
 
 No `pnpm-lock.yaml` lives in this repo — CI installs with plain `pnpm install`. npm trusted-publisher must be configured on npmjs.com for repo `auraimage/cli`, workflow `release.yml`.
 
-## No Tests Yet
+## Tests
 
-`vitest.config.ts` sets `passWithNoTests: true` — there are currently no test files. The test suite always passes vacuously.
+`pnpm test` runs vitest over `src/**/*.test.ts`. Tests live beside the module they cover. Network calls are stubbed with `vi.stubGlobal('fetch', …)`; anything that touches `process.env` (the `og` commands load `.env.local` / `.env` through `process.loadEnvFile`) must snapshot and restore it, because that loader mutates the real environment.
+
+`build` runs `tsc -p tsconfig.build.json`, which extends `tsconfig.json` and excludes `src/**/*.test.ts` so tests never reach `dist/`. `type-check` stays on `tsconfig.json`, so tests are type-checked.
