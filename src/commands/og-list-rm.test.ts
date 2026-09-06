@@ -155,6 +155,20 @@ describe('cmdOgRm', () => {
     expect(clack.cancel).toHaveBeenCalled();
   });
 
+  it('deletes nothing when the prompt is cancelled with Ctrl-C', async () => {
+    // Clack resolves a cancelled prompt to a symbol, which is truthy — so `!ok`
+    // alone would fall through and delete. Only the isCancel guard stops it, and
+    // this test fails without it.
+    clack.confirm.mockResolvedValue(Symbol('cancel'));
+    clack.isCancel.mockReturnValue(true);
+    const fetchFn = stubFetch(new Response(null, { status: 204 }));
+
+    await cmdOgRm('blog-post', {});
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(clack.cancel).toHaveBeenCalledWith('Left it alone.');
+  });
+
   it('deletes when the confirmation is accepted', async () => {
     clack.confirm.mockResolvedValue(true);
     const fetchFn = stubFetch(new Response(null, { status: 204 }));

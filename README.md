@@ -133,7 +133,13 @@ A variable with no `--var` and no `--default` is an error naming the variable, t
 
 ### `og list` and `og rm <name>`
 
-`og list` prints every template with its canvas, version, variables, and Render URL; `--json` prints the raw array. `og rm <name>` confirms before removing; pass `--yes` to skip the prompt (required with `--json`).
+`og list` prints every template with its canvas, version, variables, and Render URL. `--json` prints an object with a `templates` array, mirroring the edge's list response:
+
+```sh
+aura og list --json | jq '.templates[].name'
+```
+
+`og rm <name>` confirms before removing; pass `--yes` to skip the prompt (required with `--json`).
 
 ## Environment variables
 
