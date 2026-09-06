@@ -45,6 +45,7 @@
   "dependencies": {
     "@clack/prompts": "^0.9.1",
     "commander": "^13.1.0",
+    "takumi-js": "2.13.6",
     "zod": "^4.3.6"
   },
   "devDependencies": {

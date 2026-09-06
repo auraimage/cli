@@ -3,6 +3,7 @@ import { cmdInit } from './commands/init.js';
 import { cmdLogin } from './commands/login.js';
 import { cmdLogout } from './commands/logout.js';
 import { cmdOgList } from './commands/og-list.js';
+import { cmdOgPreview } from './commands/og-preview.js';
 import { cmdOgPush } from './commands/og-push.js';
 import { cmdOgRm } from './commands/og-rm.js';
 import { cmdUpload } from './commands/upload.js';
@@ -85,6 +86,19 @@ og.command('push <name> <file>')
   .option('--project <name>', 'Project to push into (defaults to AURA_PROJECT)')
   .option('--json', 'Print the template summary as JSON')
   .action(cmdOgPush);
+
+og.command('preview <file>')
+  .description('Render an OG template locally to an image file, without pushing it')
+  .option('--var <key=value>', 'Value for a template variable (repeatable)', collect, [])
+  .option('--out <path>', 'Where to write the image (default og-preview.<ext>)')
+  .option('--format <fmt>', 'png, jpg, or webp', 'png')
+  .option('--width <px>', 'Canvas width in pixels', '1200')
+  .option('--height <px>', 'Canvas height in pixels', '630')
+  .option('--font <family>', 'Google Font family to load (repeatable, max 4)', collect, [])
+  .option('--default <key=value>', 'Default value for a variable (repeatable)', collect, [])
+  .option('--quality <n>', 'Output quality 1-100 for JPEG and WebP (default 80)')
+  .option('--project <name>', 'Project whose images the slots resolve against (defaults to AURA_PROJECT)')
+  .action(cmdOgPreview);
 
 og.command('list')
   .description('List the OG templates in this project')
