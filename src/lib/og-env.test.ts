@@ -1,8 +1,14 @@
+import { readCredentials } from './credentials.js';
 import { OgConfigError, loadProjectEnv, resolveOgContext } from './og-env.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// resolveOgContext takes its CDN URL from the CLI's endpoint resolution, which
+// reads ~/.aura/credentials. Stubbing the read keeps the developer's real login
+// (and whether it is a --local one) out of these assertions.
+vi.mock('./credentials.js', () => ({ readCredentials: vi.fn() }));
 
 let dir: string;
 let snapshot: NodeJS.ProcessEnv;
@@ -17,6 +23,9 @@ beforeEach(() => {
   for (const key of ['AURA_SECRET_KEY', 'AURA_PROJECT', 'AURA_PROJECT_NAME', 'AURA_CDN_URL']) {
     delete process.env[key];
   }
+  // No credentials file is the common case for `aura og *`: endpoint resolution
+  // falls through to the environment, so these commands need no prior login.
+  vi.mocked(readCredentials).mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -46,11 +55,14 @@ describe('loadProjectEnv', () => {
 describe('resolveOgContext', () => {
   const env = {
     AURA_SECRET_KEY: 'sk_live_abc',
-    AURA_PROJECT: 'my-app',
-    AURA_CDN_URL: 'https://cdn.example'
+    AURA_PROJECT: 'my-app'
   } as NodeJS.ProcessEnv;
 
   it('reads the key, the project, and the CDN base URL', () => {
+    // The key and the project come from the injected env; the CDN URL comes from
+    // the endpoint resolution, which reads the real process.env that
+    // loadProjectEnv has already merged .env.local into.
+    process.env.AURA_CDN_URL = 'https://cdn.example';
     expect(resolveOgContext(undefined, env)).toEqual({
       secretKey: 'sk_live_abc',
       projectName: 'my-app',
@@ -70,11 +82,23 @@ describe('resolveOgContext', () => {
   });
 
   it('trims trailing slashes off AURA_CDN_URL and defaults to production', () => {
-    expect(resolveOgContext(undefined, { ...env, AURA_CDN_URL: 'https://cdn.example///' }).cdnUrl).toBe(
-      'https://cdn.example'
-    );
-    const { AURA_CDN_URL: _drop, ...rest } = env;
-    expect(resolveOgContext(undefined, rest as NodeJS.ProcessEnv).cdnUrl).toBe('https://cdn.auraimage.ai');
+    process.env.AURA_CDN_URL = 'https://cdn.example///';
+    expect(resolveOgContext(undefined, env).cdnUrl).toBe('https://cdn.example');
+    delete process.env.AURA_CDN_URL;
+    expect(resolveOgContext(undefined, env).cdnUrl).toBe('https://cdn.auraimage.ai');
+  });
+
+  it('rejects an AURA_CDN_URL that is not a URL', () => {
+    process.env.AURA_CDN_URL = 'cdn.example';
+    expect(() => resolveOgContext(undefined, env)).toThrow(/CLI env validation failed/);
+  });
+
+  it('follows a --local login to the local CDN, as `aura upload` does', () => {
+    vi.mocked(readCredentials).mockReturnValue({ token: 't', email: 'e', local: true });
+    // Local credentials outrank AURA_CDN_URL, so `aura og push` and `aura upload`
+    // cannot end up pointed at different CDNs.
+    process.env.AURA_CDN_URL = 'https://cdn.example';
+    expect(resolveOgContext(undefined, env).cdnUrl).toBe('https://cdn.auraimage.localhost');
   });
 
   it('names AURA_SECRET_KEY and points at aura init when the key is missing', () => {

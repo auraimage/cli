@@ -29,7 +29,12 @@ describe('sampleValues', () => {
   });
 
   it('ignores an inherited property name', () => {
-    expect(sampleValues({ variables: {}, defaults: {} })).toEqual({ values: {}, missingSlots: [] });
+    // Without the own-property guard, `defaults['constructor']` resolves up the
+    // prototype chain to a function and lands in `values` where a string belongs.
+    expect(sampleValues({ variables: { constructor: 'text' as const }, defaults: {} })).toEqual({
+      values: { constructor: 'Constructor' },
+      missingSlots: []
+    });
   });
 });
 

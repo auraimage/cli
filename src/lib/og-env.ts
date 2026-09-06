@@ -1,3 +1,5 @@
+import { readCredentials } from './credentials.js';
+import { endpointsForCredentials } from './endpoints.js';
 import { join } from 'node:path';
 
 /**
@@ -8,7 +10,6 @@ import { join } from 'node:path';
  * init` tells the developer to put it.
  */
 
-const PRODUCTION_CDN_URL = 'https://cdn.auraimage.ai';
 const ENV_FILES = ['.env.local', '.env'];
 
 export class OgConfigError extends Error {
@@ -69,6 +70,11 @@ export function resolveOgContext(overrideProject?: string, env: NodeJS.ProcessEn
     );
   }
 
-  const cdnUrl = (env.AURA_CDN_URL?.trim() || PRODUCTION_CDN_URL).replace(/\/+$/, '');
+  // The CDN base URL goes through the same resolution `aura upload` uses, so a
+  // --local login sends both commands to the same place and AURA_CDN_URL is
+  // validated as a URL rather than failing later inside fetch. It reads the real
+  // process.env, which loadProjectEnv has already merged .env.local into — so an
+  // AURA_CDN_URL set there still applies.
+  const cdnUrl = endpointsForCredentials(readCredentials()).cdnUrl.replace(/\/+$/, '');
   return { projectName, secretKey, cdnUrl };
 }
