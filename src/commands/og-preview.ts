@@ -92,7 +92,17 @@ export async function cmdOgPreview(file: string, options: OgPreviewOptions): Pro
     return;
   }
 
-  writeFileSync(plan.out, bytes);
+  try {
+    writeFileSync(plan.out, bytes);
+  } catch (e) {
+    // The render succeeded and the spinner is still running: without this the
+    // ENOENT from a typo'd --out directory surfaces as a live spinner plus an
+    // unhandled-rejection stack.
+    spinner.stop("Couldn't write the image.");
+    console.error(`Could not write ${plan.out}: ${message(e)}`);
+    process.exit(1);
+    return;
+  }
   spinner.stop(`Wrote ${plan.out} (${plan.width}x${plan.height}).`);
 }
 
@@ -205,25 +215,45 @@ async function renderLocally(plan: RenderPlan): Promise<Uint8Array> {
 }
 
 type GoogleFonts = typeof GoogleFontsFn;
+type FontSubsets = Awaited<ReturnType<GoogleFonts>>;
+
+/** Takumi throws `HTTP <status> <statusText> fetching <url>` on a non-OK response. */
+const HTTP_400_RE = /^HTTP 400\b/;
 
 /**
- * Mirrors the origin's font probe: prefer regular plus bold, fall back to
- * whatever single weight the family ships. A family Google does not have gets
- * named, rather than a card that silently renders in the fallback face.
+ * Mirrors the origin's `probeWeights` (apps/cdn-origin/src/og/template.ts):
+ * prefer regular plus bold, fall back to whatever single weight the family
+ * ships.
+ *
+ * Only a 400 is a verdict about the family — Google answers it for an unknown
+ * family or for a weight the family does not ship. A timeout, a DNS failure, or
+ * an exhausted 5xx retry is our outage, and downgrading there would hand back a
+ * preview with no bold that the pushed template renders bold.
  */
-async function loadFonts(families: string[], googleFonts: GoogleFonts) {
+async function loadFamily(name: string, googleFonts: GoogleFonts): Promise<FontSubsets> {
   for (const weight of [[400, 700], [400]]) {
     try {
-      return await googleFonts({
-        families: families.map((name) => ({ name, weight }))
-      } as Parameters<GoogleFonts>[0]);
+      const loaded = await googleFonts({ families: [{ name, weight }] } as Parameters<GoogleFonts>[0]);
+      if (loaded.length > 0) return loaded;
     } catch (e) {
-      if (weight.length === 1) {
-        throw new Error(`could not load ${families.join(', ')} from Google Fonts: ${message(e)}`);
+      const detail = message(e);
+      if (!HTTP_400_RE.test(detail)) {
+        throw new Error(`font family '${name}' could not be verified with Google Fonts: ${detail}`);
       }
     }
   }
-  return undefined;
+  throw new Error(`font family '${name}' was not found on Google Fonts`);
+}
+
+/**
+ * One probe per family, as the origin does. A single call carrying every family
+ * shares one weight list, so one family lacking 700 would drop bold for all of
+ * them and the failure would name families that are perfectly fine.
+ */
+async function loadFonts(families: string[], googleFonts: GoogleFonts): Promise<FontSubsets> {
+  const loaded: FontSubsets = [];
+  for (const name of families) loaded.push(...(await loadFamily(name, googleFonts)));
+  return loaded;
 }
 
 function message(e: unknown): string {

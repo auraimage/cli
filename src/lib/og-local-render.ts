@@ -13,11 +13,17 @@ const PLACEHOLDER_RE = /\{\{([a-z][a-z0-9_]*)\}\}/g;
 const IMG_SRC_RE = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const SLOT_ONLY_RE = /^\{\{([a-z][a-z0-9_]*)\}\}$/;
 
-// Mirrors LADDER in apps/cdn-origin/src/og/slot-path.ts.
+// The slot grammar, mirroring apps/cdn-origin/src/og/slot-path.ts. Every rule
+// there is repeated here: a shape this accepts but the origin rejects would
+// preview clean and then 400 on the first Render URL.
 const LADDER = [64, 128, 256, 512, 768, 1024, 1536, 2048, 3072, 4096] as const;
 const SLOT_MAX_DIMENSION = 2048;
 const SLOT_DEFAULT_WIDTH = 1536;
 const SLOT_DEFAULT_EXTENSION = '.webp';
+const OPTION_KEYS = ['w', 'h', 'fit', 'q'] as const;
+const FIT_VALUES = new Set(['cover', 'contain', 'face', 'auto']);
+const EMBEDDABLE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp']);
+const REJECTED_EXTENSIONS = new Set(['avif', 'gif', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'svg']);
 
 /** Emoji glyphs (Twemoji) are the only host a render may fetch — same rule as the origin. */
 export const ALLOWED_FETCH_HOST = 'cdn.jsdelivr.net' as const;
@@ -104,48 +110,119 @@ function snapAndCap(n: number): number {
   return SLOT_MAX_DIMENSION;
 }
 
+interface SlotOptions {
+  w?: number;
+  h?: number;
+  fit?: string;
+  q?: number;
+}
+
+/** Every message names the path it came from, so a card with several slots says which one. */
+function slotError(servePath: string, detail: string): OgConfigError {
+  return new OgConfigError(`'${servePath}': ${detail}`);
+}
+
+function looksLikeOptions(segment: string): boolean {
+  return segment.includes('=') || segment.includes(',');
+}
+
+/** Mirrors `parseOptionsSegment` in the origin's slot-path.ts, message for message. */
+function parseOptionsSegment(segment: string, servePath: string): SlotOptions {
+  const options: SlotOptions = {};
+  const seen = new Set<string>();
+  for (const part of segment.split(',')) {
+    if (!part) throw slotError(servePath, 'empty option in transform segment');
+    const eq = part.indexOf('=');
+    if (eq <= 0 || eq === part.length - 1) {
+      throw slotError(servePath, `malformed transform option '${part}' — expected key=value`);
+    }
+    const key = part.slice(0, eq);
+    const value = part.slice(eq + 1);
+    if (key === 'lqip') throw slotError(servePath, 'lqip is not supported in an image slot');
+    if (!(OPTION_KEYS as readonly string[]).includes(key)) {
+      throw slotError(servePath, `unknown transform option '${key}' — supported: w, h, fit, q`);
+    }
+    if (seen.has(key)) throw slotError(servePath, `duplicate transform option '${key}'`);
+    seen.add(key);
+    switch (key) {
+      case 'w':
+      case 'h': {
+        // The regex is the guard, not Number(): NaN compares false against every
+        // ladder rung, so an unchecked 'abc' would fall through to the 2048 cap.
+        if (!/^\d+$/.test(value) || Number(value) <= 0) {
+          throw slotError(servePath, `invalid ${key} '${value}' — must be a positive integer`);
+        }
+        options[key] = Number(value);
+        break;
+      }
+      case 'q': {
+        const q = /^\d+$/.test(value) ? Number(value) : NaN;
+        if (!(q >= 1 && q <= 100)) {
+          throw slotError(servePath, `invalid q '${value}' — must be an integer between 1 and 100`);
+        }
+        options.q = q;
+        break;
+      }
+      case 'fit': {
+        if (!FIT_VALUES.has(value)) {
+          throw slotError(servePath, `invalid fit '${value}' — must be cover, contain, face, or auto`);
+        }
+        options.fit = value;
+        break;
+      }
+    }
+  }
+  return options;
+}
+
 /**
  * Turns a project-relative serve path into the public CDN URL whose bytes the
- * preview embeds. Mirrors `makeImageResolver`: width snapped to the ladder and
- * capped at 2048, default width 1536 when neither axis is given, WebP unless
- * the path pins an extension.
+ * preview embeds. Mirrors `parseSlotPath` plus `makeImageResolver`: width
+ * snapped to the ladder and capped at 2048, default width 1536 when neither axis
+ * is given, WebP unless the path pins an extension.
  */
 export function slotServeUrl(cdnUrl: string, projectName: string, servePath: string): string {
   if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(servePath) || servePath.startsWith('//')) {
-    throw new OgConfigError(`'${servePath}': ${UPLOAD_FIRST}`);
+    throw slotError(servePath, UPLOAD_FIRST);
   }
   if (servePath.startsWith('/')) {
-    throw new OgConfigError(`'${servePath}': image paths are project-relative — do not start with /`);
+    throw slotError(servePath, 'image paths are project-relative — do not start with /');
   }
 
   const segments = servePath.split('/');
-  const first = segments[0]!;
-  const hasOptions = first.includes('=') || first.includes(',');
-  const options = new Map<string, string>();
-  if (hasOptions) {
-    for (const part of first.split(',')) {
-      const eq = part.indexOf('=');
-      if (eq <= 0 || eq === part.length - 1) {
-        throw new OgConfigError(`'${servePath}': malformed transform option '${part}' — expected key=value`);
-      }
-      options.set(part.slice(0, eq), part.slice(eq + 1));
+  const hasOptions = segments.length > 0 && looksLikeOptions(segments[0]!);
+  const options = hasOptions ? parseOptionsSegment(segments[0]!, servePath) : {};
+  const nameSegments = hasOptions ? segments.slice(1) : segments;
+  if (nameSegments.some(looksLikeOptions)) {
+    throw slotError(servePath, 'the transform segment must be a single path segment before the image name');
+  }
+
+  const name = nameSegments.join('/');
+  if (!name) throw slotError(servePath, 'missing image name after the transform segment');
+
+  // An extension the origin refuses to embed is named here rather than fetched
+  // and rejected by the CDN. An unrecognised suffix is not an extension at all
+  // and falls through to the name rules, exactly as at the origin.
+  let hasExtension = false;
+  const extMatch = /\.([A-Za-z0-9]+)$/.exec(name);
+  if (extMatch) {
+    const candidate = extMatch[1]!.toLowerCase();
+    if (EMBEDDABLE_EXTENSIONS.has(candidate)) hasExtension = true;
+    else if (REJECTED_EXTENSIONS.has(candidate)) {
+      throw slotError(
+        servePath,
+        `'.${candidate}' is not supported in an image slot — use .jpg, .png, .webp, or no extension`
+      );
     }
   }
-  const name = (hasOptions ? segments.slice(1) : segments).join('/');
-  if (!name) throw new OgConfigError(`'${servePath}': missing image name after the transform segment`);
 
-  const w = options.get('w');
-  const h = options.get('h');
   const rebuilt: string[] = [];
-  if (w !== undefined) rebuilt.push(`w=${snapAndCap(Number(w))}`);
-  else if (h === undefined) rebuilt.push(`w=${SLOT_DEFAULT_WIDTH}`);
-  if (h !== undefined) rebuilt.push(`h=${snapAndCap(Number(h))}`);
-  const fit = options.get('fit');
-  if (fit !== undefined) rebuilt.push(`fit=${fit}`);
-  const q = options.get('q');
-  if (q !== undefined) rebuilt.push(`q=${q}`);
+  if (options.w !== undefined) rebuilt.push(`w=${snapAndCap(options.w)}`);
+  else if (options.h === undefined) rebuilt.push(`w=${SLOT_DEFAULT_WIDTH}`);
+  if (options.h !== undefined) rebuilt.push(`h=${snapAndCap(options.h)}`);
+  if (options.fit !== undefined) rebuilt.push(`fit=${options.fit}`);
+  if (options.q !== undefined) rebuilt.push(`q=${options.q}`);
 
-  const hasExtension = /\.[A-Za-z0-9]+$/.test(name);
   const encoded = name.split('/').map(encodeURIComponent).join('/');
   return (
     `${cdnUrl}/${encodeURIComponent(projectName)}/${rebuilt.join(',')}/${encoded}` +

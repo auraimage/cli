@@ -1,3 +1,4 @@
+import { OgConfigError } from './og-env.js';
 import { collect, parseCanvas, parseDefaults, parseFonts } from './og-flags.js';
 import { describe, expect, it } from 'vitest';
 
@@ -58,6 +59,14 @@ describe('parseDefaults', () => {
 
   it('rejects a duplicate key', () => {
     expect(() => parseDefaults(['title=a', 'title=b'], '--default')).toThrow("--default 'title' was given twice");
+  });
+
+  it('accepts a 500-character value and rejects 501, the cap a Render URL enforces', () => {
+    expect(parseDefaults([`title=${'x'.repeat(500)}`], '--default')).toEqual({ title: 'x'.repeat(500) });
+    expect(() => parseDefaults([`title=${'x'.repeat(501)}`], '--default')).toThrow(OgConfigError);
+    expect(() => parseDefaults([`title=${'x'.repeat(501)}`], '--var')).toThrow(
+      "value for 'title' exceeds 500 characters"
+    );
   });
 });
 

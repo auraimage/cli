@@ -10,6 +10,9 @@ import { OgConfigError } from './og-env.js';
 const MIN_DIMENSION = 100;
 const MAX_DIMENSION = 4096;
 const MAX_FONTS = 4;
+// Mirrors MAX_VALUE_LENGTH at the edge (apps/cdn/src/lib/og-url.ts): a Render URL
+// refuses a longer value, so a --default that long would push and then 400.
+const MAX_VALUE_LENGTH = 500;
 const VARIABLE_NAME_RE = /^[a-z][a-z0-9_]*$/;
 
 export interface OgCanvasFlags {
@@ -62,6 +65,11 @@ export function parseDefaults(pairs: string[], flagName: string): Record<string,
       throw new OgConfigError(`${flagName} variable name '${key}' must match [a-z][a-z0-9_]*`);
     }
     if (Object.hasOwn(out, key)) throw new OgConfigError(`${flagName} '${key}' was given twice`);
+    if (value.length > MAX_VALUE_LENGTH) {
+      // The edge's wording verbatim, so the same value fails the same way here
+      // and on a Render URL.
+      throw new OgConfigError(`value for '${key}' exceeds ${MAX_VALUE_LENGTH} characters`);
+    }
     out[key] = value;
   }
   return out;

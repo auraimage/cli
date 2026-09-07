@@ -107,6 +107,65 @@ describe('slotServeUrl', () => {
   });
 });
 
+describe('slotServeUrl rejects everything the origin rejects', () => {
+  const parse = (path: string) => () => slotServeUrl('https://cdn.example', 'my-app', path);
+
+  it('rejects a non-numeric dimension rather than silently snapping to the 2048 cap', () => {
+    // Number('abc') is NaN, so every `n <= rung` test is false: without this
+    // guard the preview quietly embeds w=2048 where the origin returns a 400.
+    expect(parse('w=abc/blog/hero')).toThrow(OgConfigError);
+    expect(parse('w=abc/blog/hero')).toThrow("invalid w 'abc' — must be a positive integer");
+  });
+
+  it('rejects a zero or negative dimension', () => {
+    expect(parse('w=0/blog/hero')).toThrow("invalid w '0' — must be a positive integer");
+    expect(parse('h=-4/blog/hero')).toThrow("invalid h '-4' — must be a positive integer");
+  });
+
+  it('rejects an extension a card cannot embed', () => {
+    expect(parse('w=256/blog/hero.avif')).toThrow(
+      "'.avif' is not supported in an image slot — use .jpg, .png, .webp, or no extension"
+    );
+  });
+
+  it('rejects lqip by name', () => {
+    expect(parse('lqip=1/blog/hero')).toThrow('lqip is not supported in an image slot');
+  });
+
+  it('rejects an unknown transform option', () => {
+    expect(parse('blur=4/blog/hero')).toThrow("unknown transform option 'blur' — supported: w, h, fit, q");
+  });
+
+  it('rejects a duplicate transform option instead of taking the last one', () => {
+    expect(parse('w=64,w=128/blog/hero')).toThrow("duplicate transform option 'w'");
+  });
+
+  it('rejects an invalid fit', () => {
+    expect(parse('fit=squish/blog/hero')).toThrow("invalid fit 'squish' — must be cover, contain, face, or auto");
+  });
+
+  it('rejects a quality outside 1-100', () => {
+    expect(parse('q=0/blog/hero')).toThrow("invalid q '0' — must be an integer between 1 and 100");
+    expect(parse('q=101/blog/hero')).toThrow("invalid q '101' — must be an integer between 1 and 100");
+  });
+
+  it('rejects a transform segment that is not the first one', () => {
+    expect(parse('blog/w=64/hero')).toThrow(
+      'the transform segment must be a single path segment before the image name'
+    );
+  });
+
+  it('names the offending path in the message', () => {
+    expect(parse('w=abc/blog/hero')).toThrow("'w=abc/blog/hero'");
+  });
+
+  it('accepts every valid option at once', () => {
+    expect(slotServeUrl('https://cdn.example', 'my-app', 'w=300,h=200,fit=contain,q=55/blog/hero.jpg')).toBe(
+      'https://cdn.example/my-app/w=512,h=256,fit=contain,q=55/blog/hero.jpg'
+    );
+  });
+});
+
 describe('staticImagePaths', () => {
   it('returns every non-placeholder image src, deduplicated', () => {
     const html = '<img src="w=64/logo" /><img src="{{cover}}" /><img src="w=64/logo" />';

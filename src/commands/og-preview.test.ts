@@ -44,6 +44,29 @@ function pngSize(bytes: Buffer): { width: number; height: number } {
 
 const FLAGS = { font: [] as string[], default: [] as string[], var: [] as string[] };
 
+/** Two 1x1 PNGs that differ only in colour, so a render that embeds them differs too. */
+const RED = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4o6YGAAMKASng8MlTAAAAAElFTkSuQmCC';
+const BLUE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNQTX4NAAIkAXSaGkHUAAAAAElFTkSuQmCC';
+
+/**
+ * A css2 body Takumi's font parser accepts, one `@font-face` per requested
+ * weight. The `unicode-range` is CJK on purpose: `render` fetches only the
+ * subsets the content actually uses, so a Latin-free range means these tests
+ * exercise the probe without needing real woff2 bytes to hand back.
+ */
+function css2(family: string, weights: number[]): string {
+  return weights
+    .map(
+      (weight) =>
+        `@font-face { font-family: '${family}'; font-style: normal; font-weight: ${weight}; ` +
+        `src: url(https://fonts.gstatic.com/s/${family}-${weight}.woff2) format('woff2'); ` +
+        `unicode-range: U+4E00-9FFF; }`
+    )
+    .join('\n');
+}
+
+const FONT_ONLY = '<div tw="flex h-full w-full bg-[#101014]"></div>';
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'aura-og-preview-'));
   snapshot = { ...process.env };
@@ -148,5 +171,116 @@ describe('cmdOgPreview', () => {
     );
     expect(err.join('\n')).toContain('CLI env validation failed');
     expect(err.join('\n')).not.toContain('Could not read');
+  });
+  it('keys each embedded image by the src the substituted markup carries', async () => {
+    // Rendered twice with different image bytes and nothing else changed. The
+    // sources map is keyed by the `src` string Takumi will look up; key it by
+    // anything else — the CDN URL, say — and the image is dropped from BOTH
+    // renders, making the two PNGs byte-identical. Percent-encoding is the part
+    // that makes the two keys differ: a space is legal in an image name, so the
+    // markup carries `w=300/demo/my hero` while the URL carries `my%20hero`.
+    writeFileSync(join(dir, 't.html'), '<div tw="flex h-full w-full"><img src="{{cover}}" tw="h-full w-full" /></div>');
+
+    const render = async (base64: string, out: string) => {
+      const fetchFn = vi.fn(async (_url: string | URL | Request) => new Response(Buffer.from(base64, 'base64')));
+      vi.stubGlobal('fetch', fetchFn);
+      await cmdOgPreview(join(dir, 't.html'), {
+        ...FLAGS,
+        var: ['cover=w=300/demo/my hero'],
+        out,
+        width: '100',
+        height: '100'
+      });
+      return String(fetchFn.mock.calls[0]![0]);
+    };
+
+    const url = await render(RED, join(dir, 'red.png'));
+    expect(url).toBe('https://cdn.example/my-app/w=512/demo/my%20hero.webp');
+    await render(BLUE, join(dir, 'blue.png'));
+
+    const red = readFileSync(join(dir, 'red.png'));
+    const blue = readFileSync(join(dir, 'blue.png'));
+    expect(pngSize(red)).toEqual({ width: 100, height: 100 });
+    expect(red.equals(blue)).toBe(false);
+  });
+
+  it('probes each font family on its own, so one family without bold keeps it for the others', async () => {
+    writeFileSync(join(dir, 't.html'), FONT_ONLY);
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const href = decodeURIComponent(String(url));
+        asked.push(href);
+        // Beta ships regular only; Google answers 400 for a weight it lacks.
+        if (href.includes('Beta') && href.includes('400;700')) {
+          return new Response('', { status: 400, statusText: 'Bad Request' });
+        }
+        const family = href.includes('Beta') ? 'Beta' : 'Alpha';
+        return new Response(css2(family, href.includes('400;700') ? [400, 700] : [400]), {
+          status: 200,
+          headers: { 'content-type': 'text/css' }
+        });
+      })
+    );
+
+    await cmdOgPreview(join(dir, 't.html'), {
+      ...FLAGS,
+      font: ['Alpha', 'Beta'],
+      out: join(dir, 'card.png'),
+      width: '100',
+      height: '100'
+    });
+
+    // Alpha is asked for bold and gets it; only Beta downgrades itself.
+    expect(asked).toEqual([
+      'https://fonts.googleapis.com/css2?family=Alpha:wght@400;700',
+      'https://fonts.googleapis.com/css2?family=Beta:wght@400;700',
+      'https://fonts.googleapis.com/css2?family=Beta:wght@400'
+    ]);
+    expect(pngSize(readFileSync(join(dir, 'card.png')))).toEqual({ width: 100, height: 100 });
+  });
+
+  it('propagates a network failure rather than quietly downgrading to regular', async () => {
+    writeFileSync(join(dir, 't.html'), FONT_ONLY);
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        asked.push(decodeURIComponent(String(url)));
+        throw new TypeError('fetch failed');
+      })
+    );
+
+    await expect(
+      cmdOgPreview(join(dir, 't.html'), { ...FLAGS, font: ['Alpha'], out: join(dir, 'card.png') })
+    ).rejects.toThrow('exit:1');
+    expect(err.join('\n')).toContain("font family 'Alpha' could not be verified with Google Fonts");
+    expect(err.join('\n')).toContain('fetch failed');
+    // Only a 400 is a verdict about the family. An outage must never cost the
+    // card its bold weight, so the 400-only shape is never tried.
+    expect(asked.every((url) => url.includes('400;700'))).toBe(true);
+  });
+
+  it('reports a write it could not make instead of throwing a raw stack', async () => {
+    writeFileSync(join(dir, 't.html'), HTML);
+    const out = join(dir, 'no-such-dir', 'card.png');
+
+    await expect(cmdOgPreview(join(dir, 't.html'), { ...FLAGS, var: ['title=x'], out })).rejects.toThrow('exit:1');
+    expect(err.join('\n')).toContain(`Could not write ${out}`);
+    expect(err.join('\n')).toContain('ENOENT');
+    expect(err.join('\n')).not.toContain('at ');
+  });
+
+  it('rejects a --var value longer than a Render URL accepts', async () => {
+    writeFileSync(join(dir, 't.html'), HTML);
+    await expect(
+      cmdOgPreview(join(dir, 't.html'), {
+        ...FLAGS,
+        var: [`title=${'x'.repeat(501)}`],
+        out: join(dir, 'card.png')
+      })
+    ).rejects.toThrow('exit:1');
+    expect(err.join('\n')).toContain("value for 'title' exceeds 500 characters");
   });
 });
